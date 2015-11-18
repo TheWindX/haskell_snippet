@@ -4,7 +4,7 @@ import System.Directory
 import Control.DeepSeq
 import Control.Monad
 
-data FileItem = Fold String | File String
+data FileItem = Fold {path::String} | File {path::String} deriving (Show) 
 
 type Path = String
 
@@ -45,8 +45,6 @@ myForM_ items fb = do
 	seq mbs
 
 
-
-
 dirCurrent1 :: String -> IO ()
 dirCurrent1 path = do
 	paths <- getDirectoryContents path
@@ -55,3 +53,17 @@ dirCurrent1 path = do
 	myForM_ paths (\item -> putStrLn item)
 	return ()
 
+-- this show 
+dirCurrent2 :: String -> IO ()
+dirCurrent2 path = do
+	paths <- getDirectoryContents path
+	let topPath = path
+	paths <- return $ filter (\item -> notElem item [".", ".."]) paths
+	items <- forM paths 
+		(\path -> do
+			let longpath = topPath ++ "/" ++ path
+			isDir <- doesDirectoryExist longpath
+			if isDir
+				then return $ Fold longpath
+				else return $ File longpath)
+	forM_ items (\item -> putStrLn $ show item) 
