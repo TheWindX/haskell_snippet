@@ -1,4 +1,4 @@
-module Main where
+module Json.Parser where
 
 import qualified Text.ParserCombinators.Parsec as P
 import Numeric
@@ -50,9 +50,6 @@ listQuotoStringByDot = do
 	qs <- P.sepBy quotoString1 sep
 	return qs
 
-
-
-
 {-|
 null
 bool
@@ -63,14 +60,15 @@ map
 -}
 
 
-
 data Jval = Jnull
 	|Jbool Bool
 	|JFloat Float
 	|JString String
 	|JArray [Jval]
 	|JMap [(String, Jval)]
-	deriving (Show)
+	deriving (Show, Eq)
+
+
 
 nullP :: P.Parser Jval
 nullP = do
@@ -133,3 +131,14 @@ jvalP = do
 	P.spaces
 	return ret
 	
+
+class Builder a where
+	iter :: a -> [Either (String, Jval) Jval] 
+
+
+instance Builder Jval where
+	iter v = case v of
+		JArray arr -> (Right v):(foldr (\a b -> (iter a) ++ b ) [] arr)
+		JMap m -> (Right v):(foldr (\(k, v) b -> ((Left (k, v)):(iter v)) ++ b) [] m)
+		_ -> [Right v]
+
