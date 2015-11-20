@@ -1,5 +1,6 @@
 
 module Main where
+import System.Environment
 import Control.Monad
 import Json.Parser
 import System.IO
@@ -25,7 +26,6 @@ findAllEft path = do
 				if isDir
 					then findAllEft rpath
 					else do
-						--putStrLn $ "here:"++rpath++", "++(show $ 	isSuffixOf ".eft" rpath)
 						if isSuffixOf ".eft" rpath
 						then return [rpath]
 						else return [])
@@ -41,41 +41,114 @@ file2Json p = do
 	putStrLn $ show len
 	
 	content <- hGetContents handle
-	putStrLn $ content
+	putStrLn content
 	
 	let pres = P.parse jvalP "" content
-	
+	--putStrLn $ show pres
 	hClose handle
 	case pres of
 		Left _ -> return $ JMap []
 		Right j -> return j
 
 
-getURL :: Jval -> Maybe String
-getURL v = 
+data EffectInfo = 
+	EffectInfo 
+	{
+		url::String,
+		delay:: Float,
+		lastTime :: Float,
+		bindType :: String,
+		scale :: Float
+	}
+	
+
+
+getValue :: Jval -> String -> Maybe Jval
+getValue jv key = 
 	let 
-		urlss = do
-			item <- (iter v)
-			case item of
-				Left (k, v) -> if k == "Url"
-					then case v of
-						JString s -> return [s]
-						_ -> return []
+		vals = do
+			item <- (iter jv)
+			founds <- case item of
+				Left (k, v) -> if k == key
+					then return [v]
 					else return []
 				_ -> return []
-		urls = concat urlss
-	in 
-		if (length urls) >= 1
-			then Just $ (urls !! 0)
+			return founds
+		val = concat vals
+
+	in
+		if length val >= 1
+			then Just $ (val !! 0)
 			else Nothing
 
 
 
---changeOldEffect :: Jval -> Jval
---changeOldEffect = case item of
---					("OldEffects", v) -> ("Effects", Jnull)
---					_ -> item
---					) 
+genNewEffect :: Jval -> Jval
+genNewEffect jv = 
+	let
+		find = getValue jv
+		murl = case find "Url" of
+			Just v -> case v of
+				JString s -> s
+				_ -> ""
+			_ -> ""
+		mdelay = case find "Delay" of
+			Just v -> case v of
+				JFloat num -> num
+				_ -> 0
+			_ -> 0
+		mLastTime = case find "LastTime" of
+			Just v -> case v of
+				JFloat num -> num
+				_ -> 2
+			_ -> 2
+		mScale = case find "ScaleX" of
+			Just v -> case v of
+				JFloat num -> num
+				_ -> 1
+			_ -> 1
+	in
+		JArray [
+			JMap 
+			[
+				("Url", JString murl), 
+				("BindType", JString "eFoot"),
+				("BoneName", JString ""),
+				("Frames",
+					JArray 
+					[
+						JMap [
+							("TweenType", JFloat 0),
+							("Visible", JBool True),
+							("PositionX", JFloat 0),
+							("PositionY", JFloat 0),
+							("PositionZ", JFloat 0),
+							("ScaleX", JFloat mScale),
+							("ScaleY", JFloat mScale),
+							("ScaleZ", JFloat mScale),
+							("RotationX", JFloat 0),
+							("RotationY", JFloat 0),
+							("RotationZ", JFloat 0),
+							("Delay",JFloat mdelay)
+						],
+						JMap [
+							("TweenType", JFloat 0),
+							("Visible", JBool False),
+							("PositionX", JFloat 0),
+							("PositionY", JFloat 0),
+							("PositionZ", JFloat 0),
+							("ScaleX", JFloat mScale),
+							("ScaleY", JFloat mScale),
+							("ScaleZ", JFloat mScale),
+							("RotationX", JFloat 0),
+							("RotationY", JFloat 0),
+							("RotationZ", JFloat 0),
+							("Delay",JFloat (mdelay + mLastTime))
+						]
+					]
+				)
+			]
+		]
 
 
 changeFile :: Path -> IO ()
@@ -85,16 +158,21 @@ changeFile path = do
 		JMap m -> do
 			let newMap = foldr (\item acc-> case item of
 					("OldEffects", v) -> 
-						let url = getURL v
-						in case url of
-							Just u -> ("Effects", JString u):acc
-							Nothing -> acc
-					(_:'1':[], v) -> if v == JArray []
-						then acc
-						else (item:acc)
-					_ -> item:acc) [] m
-
-			putStrLn $ show $ JMap newMap
+						case v of
+							JArray [] -> acc
+							_ -> ("Effects", genNewEffect v):acc
+					other -> case other of
+						(_, v) -> case v of
+							JArray [] -> acc
+							t -> other:acc
+					) [] m
+			
+			handle <- openFile path WriteMode
+			hSetEncoding handle utf8_bom
+			hPutStr handle $ bprint 0 (JMap newMap)
+			hClose handle
+			--writeFile path $ bprint 0 (JMap newMap)
+			--putStrLn $ bprint 0 (JMap newMap)
 			--let oe = lookup "OldEffects" m
 			--case oe of
 			--	Just oeval -> 
@@ -103,5 +181,22 @@ changeFile path = do
 		_ -> putStrLn "nothing"
 
 main = do
-	let r = P.parse jvalP "" "[3, 4, 5]"
-	putStrLn $ show r
+	args <- getArgs
+	if length args == 1
+		then do
+			files <- findAllEft $ args !! 0
+			forM_ files (\f -> do putStrLn f; changeFile f)
+		else
+			putStrLn "Usage: *.exe <Directory>"
+	
+	
+	--return $ flip map files (\f -> changeFile f)
+
+test1 = do
+	let (Right jv) = P.parse jvalP "" "[\n\t3\n, [3, 4, 5], {\"a\":\"[1,2,3]\",\"b\":4,\"c\":4}, 5]"
+	putStrLn $ bprint 0 jv
+
+test2 = do
+	changeFile "attack1_1000.eft"
+
+
